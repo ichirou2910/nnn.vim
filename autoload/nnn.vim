@@ -100,13 +100,17 @@ function! s:eval_temp_file(opts)
 endfunction
 
 function! s:popup(opts, term_opts)
+    let right = get(a:opts, 'right', 0)
+
     " Size and position
     let width = min([max([0, float2nr(&columns * a:opts.width)]), &columns])
     let height = min([max([0, float2nr(&lines * a:opts.height)]), &lines - has('nvim')])
+    let padding_right = right > 0 ? min([max([0, float2nr(&columns * right)]), &columns]) : 0
     let yoffset = get(a:opts, 'yoffset', 0.5)
     let xoffset = get(a:opts, 'xoffset', 0.5)
     let row = float2nr(yoffset * (&lines - height))
-    let col = float2nr(xoffset * (&columns - width))
+    let col = float2nr(xoffset * (&columns / 2 - width))
+    let padding_col = padding_right > 0 ? float2nr(xoffset * (&columns - padding_right)) + 1 : 0
 
     " Managing the differences
     let row = min([max([0, row]), &lines - has('nvim') - height])
@@ -126,7 +130,7 @@ function! s:popup(opts, term_opts)
 
         let l:win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
                     \ 'row': row,
-                    \ 'col': col,
+                    \ 'col': col + padding_col,
                     \ 'width': width,
                     \ 'height': height,
                     \ 'border': l:borderchars,
@@ -158,6 +162,7 @@ function! s:switch_back(opts, cmd)
     let l:buf = a:opts.ppos.buf
     let l:layout = a:opts.layout
     let l:term = a:opts.term
+    let l:preview_term = a:opts.preview_term
 
     " when split explorer
     if type(l:layout) == v:t_string && l:layout ==# 'enew' && bufexists(l:buf)
@@ -169,6 +174,8 @@ function! s:switch_back(opts, cmd)
         " Making sure we close the windows when sometimes they linger
         if has('nvim') && nvim_win_is_valid(l:term.winhandle)
             call nvim_win_close(l:term.winhandle, v:false)
+        elseif has('nvim') && nvim_win_is_valid(l:preview_term.winhandle)
+            call nvim_win_close(l:preview_term.winhandle, v:false)
         else
             call popup_close(l:term.winhandle)
         endif
@@ -208,10 +215,10 @@ endfunction
 function! s:create_on_exit_callback(opts)
     let l:opts = a:opts
     function! s:callback(id, code, ...) closure
-        if a:code != 0
-            echohl ErrorMsg | echo 'nnn exited with '.a:code | echohl None
-            return
-        endif
+        " if a:code != 0
+        "     echohl ErrorMsg | echo 'nnn exited with '.a:code | echohl None
+        "     return
+        " endif
 
         call s:eval_temp_file(l:opts)
 
@@ -280,12 +287,16 @@ function! nnn#pick(...) abort
     endif
 
     let l:cmd = g:nnn#command.l:sess_cfg.' -p '.shellescape(s:temp_file).' '.(l:directory != '' ? shellescape(l:directory): '')
+    let l:preview_cmd = "~/.config/nnn/plugins/preview-vim"
     let l:layout = exists('l:opts.layout') ? l:opts.layout : g:nnn#layout
+    let l:preview_layout = exists('l:opts.preview_layout') ? l:opts.preview_layout : g:nnn#preview_layout
 
     let l:opts.layout = l:layout
     let l:opts.ppos = { 'buf': bufnr(''), 'winid': win_getid() }
 
+    let l:opts.preview_term = s:build_window(l:preview_layout, { 'cmd': l:preview_cmd, 'on_exit': s:create_on_exit_callback(l:opts) })
     let l:opts.term = s:build_window(l:layout, { 'cmd': l:cmd, 'on_exit': s:create_on_exit_callback(l:opts) })
+
     let b:tbuf = l:opts.term.buf
     setfiletype nnn
     if g:nnn#statusline && !s:present(l:layout, 'window')
