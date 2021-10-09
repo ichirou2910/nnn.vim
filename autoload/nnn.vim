@@ -99,24 +99,25 @@ function! s:eval_temp_file(opts)
     redraw!
 endfunction
 
-function! s:popup(opts, term_opts)
-    let right = get(a:opts, 'right', 0)
-
+function! s:popup(opts, cmds, win_opts)
     " Size and position
     let width = min([max([0, float2nr(&columns * a:opts.width)]), &columns])
     let height = min([max([0, float2nr(&lines * a:opts.height)]), &lines - has('nvim')])
-    let padding_right = right > 0 ? min([max([0, float2nr(&columns * right)]), &columns]) : 0
+
     let yoffset = get(a:opts, 'yoffset', 0.5)
     let xoffset = get(a:opts, 'xoffset', 0.5)
+
     let row = float2nr(yoffset * (&lines - height))
-    let col = float2nr(xoffset * (&columns / 2 - width))
-    let padding_col = padding_right > 0 ? float2nr(xoffset * (&columns - padding_right)) + 1 : 0
+    let col = float2nr(xoffset * (&columns - width))
 
     " Managing the differences
     let row = min([max([0, row]), &lines - has('nvim') - height])
     let col = min([max([0, col]), &columns - width])
     let row += !has('nvim')
     let col += !has('nvim')
+
+    let nnn_width = float2nr(width * 3 / 7)
+    let preview_width = width - nnn_width - 1
 
     let l:border = get(a:opts, 'border', 'rounded')
     let l:default_hl = hlexists('FloatBorder') ? 'FloatBorder' : 'Comment'
@@ -128,20 +129,42 @@ function! s:popup(opts, term_opts)
                     \ : ['┌', '─' ,'┐', '│', '┘', '─', '└', '│' ], 
                     \ {_, val -> [v:val, l:highlight]})
 
-        let l:win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
+        " Create preview buffer before nnn buffer so that nnn buffer will be
+        " focused
+        let l:preview_win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
                     \ 'row': row,
-                    \ 'col': col + padding_col,
-                    \ 'width': width,
+                    \ 'col': col + nnn_width + 1,
+                    \ 'width': preview_width,
                     \ 'height': height,
                     \ 'border': l:borderchars,
                     \ 'relative': 'editor',
                     \ 'style': 'minimal'
                     \ })
-        call setwinvar(l:win, '&winhighlight', 'NormalFloat:Normal')
-        call setwinvar(l:win, '&colorcolumn', '')
-        return { 'buf': s:create_term_buf(a:term_opts), 'winhandle': l:win }
+
+        call setwinvar(l:preview_win, '&winhighlight', 'NormalFloat:Normal')
+        call setwinvar(l:preview_win, '&colorcolumn', '')
+        let preview_buf = s:create_term_buf(extend(a:win_opts, #{cmd: a:cmds.preview}))
+
+        let l:nnn_win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
+                    \ 'row': row,
+                    \ 'col': col,
+                    \ 'width': nnn_width - 1,
+                    \ 'height': height,
+                    \ 'border': l:borderchars,
+                    \ 'relative': 'editor',
+                    \ 'style': 'minimal'
+                    \ })
+
+        call setwinvar(l:nnn_win, '&winhighlight', 'NormalFloat:Normal')
+        call setwinvar(l:nnn_win, '&colorcolumn', '')
+        let nnn_buf = s:create_term_buf(extend(a:win_opts, #{cmd: a:cmds.nnn}))
+
+        return {  
+        \ 'term': { 'buf': nnn_buf, 'winhandle': l:nnn_win },
+        \ 'preview_term': { 'buf': preview_buf, 'winhandle': l:preview_win }
+        \ }
     else
-        let l:buf = s:create_term_buf(extend(a:term_opts, #{ curwin: 0, hidden: 1 }))
+        let l:buf = s:create_term_buf(extend(a:win_opts, #{ curwin: 0, hidden: 1 }))
         let l:borderchars = l:border ==# 'rounded'
                     \ ? ['─', '│', '─', '│', '╭', '╮','╯' , '╰']
                     \ : ['─', '│', '─', '│', '┌', '┐', '┘', '└']
@@ -233,13 +256,13 @@ function! s:create_on_exit_callback(opts)
     return function('s:callback')
 endfunction
 
-function! s:build_window(layout, term_opts)
+function! s:build_window(layout, cmds, term_opts)
     if s:present(a:layout, 'window')
         if type(a:layout.window) == v:t_dict
             if !g:nnn#has_floating_window_support
                 throw 'Your vim/neovim version does not support popup/floating window.'
             endif
-            return s:popup(a:layout.window, a:term_opts)
+            return s:popup(a:layout.window, a:cmds, a:term_opts)
         else
             throw 'Invalid layout'
         endif
@@ -286,16 +309,16 @@ function! nnn#pick(...) abort
         let l:sess_cfg = ' '
     endif
 
-    let l:cmd = g:nnn#command.l:sess_cfg.' -p '.shellescape(s:temp_file).' '.(l:directory != '' ? shellescape(l:directory): '')
+    let l:nnn_cmd = g:nnn#command.l:sess_cfg.' -p '.shellescape(s:temp_file).' '.(l:directory != '' ? shellescape(l:directory): '')
     let l:preview_cmd = "~/.config/nnn/plugins/preview-vim"
     let l:layout = exists('l:opts.layout') ? l:opts.layout : g:nnn#layout
-    let l:preview_layout = exists('l:opts.preview_layout') ? l:opts.preview_layout : g:nnn#preview_layout
 
     let l:opts.layout = l:layout
     let l:opts.ppos = { 'buf': bufnr(''), 'winid': win_getid() }
 
-    let l:opts.preview_term = s:build_window(l:preview_layout, { 'cmd': l:preview_cmd, 'on_exit': s:create_on_exit_callback(l:opts) })
-    let l:opts.term = s:build_window(l:layout, { 'cmd': l:cmd, 'on_exit': s:create_on_exit_callback(l:opts) })
+    let l:terms = s:build_window(l:layout, { 'nnn': l:nnn_cmd, 'preview': l:preview_cmd }, { 'on_exit': s:create_on_exit_callback(l:opts) })
+    let l:opts.term = l:terms.term
+    let l:opts.preview_term = l:terms.preview_term
 
     let b:tbuf = l:opts.term.buf
     setfiletype nnn
