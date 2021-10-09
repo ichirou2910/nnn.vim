@@ -3,6 +3,7 @@ local M = {}
 M.valid_options = {
 	"set_default_mappings",
 	"layout",
+	"fifo",
 	"action",
 	"session",
 	"command",

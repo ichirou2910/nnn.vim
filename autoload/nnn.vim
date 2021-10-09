@@ -309,8 +309,8 @@ function! nnn#pick(...) abort
         let l:sess_cfg = ' '
     endif
 
-    let l:nnn_cmd = g:nnn#command.l:sess_cfg.' -p '.shellescape(s:temp_file).' '.(l:directory != '' ? shellescape(l:directory): '')
-    let l:preview_cmd = "~/.config/nnn/plugins/preview-vim"
+    let l:nnn_cmd = "NNN_FIFO=".g:nnn#fifo.' '.g:nnn#command.l:sess_cfg.' -p '.shellescape(s:temp_file).' '.(l:directory != '' ? shellescape(l:directory): '')
+    let l:preview_cmd = "NNN_FIFO=".g:nnn#fifo." ~/.config/nnn/plugins/preview-vim"
     let l:layout = exists('l:opts.layout') ? l:opts.layout : g:nnn#layout
 
     let l:opts.layout = l:layout

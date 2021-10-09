@@ -21,6 +21,10 @@ if !exists('g:nnn#command')
     let g:nnn#command = 'nnn'
 endif
 
+if !exists('g:nnn#fifo')
+    let g:nnn#fifo = "/tmp/nnn.fifo"
+endif
+
 if !exists('g:nnn#statusline')
     let g:nnn#statusline = 1
 endif
