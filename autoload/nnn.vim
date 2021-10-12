@@ -116,8 +116,13 @@ function! s:popup(opts, cmds, win_opts)
     let row += !has('nvim')
     let col += !has('nvim')
 
-    let nnn_width = float2nr(width * 3 / 7)
-    let preview_width = width - nnn_width - 1
+    let nnn_width = width
+    let preview_width = 0
+
+    if width > (a:opts.min_size / a:opts.min_ratio + a:opts.min_size + a:opts.gap)
+        let nnn_width = a:opts.min_size
+        let preview_width = width - nnn_width - a:opts.gap
+    endif
 
     let l:border = get(a:opts, 'border', 'rounded')
     let l:default_hl = hlexists('FloatBorder') ? 'FloatBorder' : 'Comment'
@@ -131,19 +136,24 @@ function! s:popup(opts, cmds, win_opts)
 
         " Create preview buffer before nnn buffer so that nnn buffer will be
         " focused
-        let l:preview_win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
-                    \ 'row': row,
-                    \ 'col': col + nnn_width + 1,
-                    \ 'width': preview_width,
-                    \ 'height': height,
-                    \ 'border': l:borderchars,
-                    \ 'relative': 'editor',
-                    \ 'style': 'minimal'
-                    \ })
+        let l:preview_win = v:null
+        let preview_buf = v:null
 
-        call setwinvar(l:preview_win, '&winhighlight', 'NormalFloat:Normal')
-        call setwinvar(l:preview_win, '&colorcolumn', '')
-        let preview_buf = s:create_term_buf(extend(a:win_opts, #{cmd: a:cmds.preview}))
+        if preview_width > 0
+            let l:preview_win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
+                        \ 'row': row,
+                        \ 'col': col + nnn_width + a:opts.gap,
+                        \ 'width': preview_width,
+                        \ 'height': height,
+                        \ 'border': l:borderchars,
+                        \ 'relative': 'editor',
+                        \ 'style': 'minimal'
+                        \ })
+
+            call setwinvar(l:preview_win, '&winhighlight', 'NormalFloat:Normal')
+            call setwinvar(l:preview_win, '&colorcolumn', '')
+            let preview_buf = s:create_term_buf(extend(a:win_opts, #{cmd: a:cmds.preview}))
+        endif
 
         let l:nnn_win = nvim_open_win(nvim_create_buf(v:false, v:true), v:true, {
                     \ 'row': row,
